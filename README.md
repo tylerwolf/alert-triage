@@ -1,11 +1,21 @@
-# alert-triage
+<p align="center">
+  <img src=".github/logo.png" alt="alert-triage" width="600">
+</p>
 
-[![CI](https://github.com/tylerwolf/alert-triage/actions/workflows/ci.yml/badge.svg)](https://github.com/tylerwolf/alert-triage/actions/workflows/ci.yml)
-[![Release](https://img.shields.io/github/v/release/tylerwolf/alert-triage)](https://github.com/tylerwolf/alert-triage/releases/latest)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+<p align="center">
+  <a href="https://github.com/tylerwolf/alert-triage/actions/workflows/ci.yml"><img src="https://github.com/tylerwolf/alert-triage/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/tylerwolf/alert-triage/releases/latest"><img src="https://img.shields.io/github/v/release/tylerwolf/alert-triage" alt="Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.12+-blue.svg" alt="Python 3.12+"></a>
+</p>
 
-AI-powered alert diagnosis for Docker Compose stacks. Receives Alertmanager webhooks, investigates using Claude tool-calling (Loki logs, Prometheus metrics, Docker status), and posts diagnoses to Discord.
+<p align="center">
+  AI-powered alert diagnosis for Docker Compose stacks.<br>
+  Receives Alertmanager webhooks, investigates using Claude tool-calling<br>
+  (Loki logs, Prometheus metrics, Docker status), and posts diagnoses to Discord.
+</p>
+
+---
 
 ## Quick Start
 
@@ -93,16 +103,24 @@ All configuration is via environment variables. Variables prefixed with `ALERT_T
 
 ## How It Works
 
+```
+Alertmanager ──webhook──▶ Coalesce (45s) ──▶ Dedup ──▶ Claude Investigation ──▶ Discord
+                                                            │
+                                                  ┌─────────┼─────────┐
+                                                  ▼         ▼         ▼
+                                                Loki   Prometheus  Docker
+```
+
 1. **Alertmanager** sends a webhook when alerts fire
-2. **Coalescing** buffers alerts for 45 seconds to group related alerts into one investigation
+2. **Coalescing** buffers alerts for 45s to group related alerts into one investigation
 3. **Dedup** skips alert sets already investigated in the last 30 minutes
-4. **Claude** receives the alert details and uses four tools to investigate:
+4. **Claude** receives the alert details and investigates using four tools:
    - `query_loki` — search container logs via LogQL
    - `query_prometheus` — query metrics via PromQL
    - `get_docker_containers` — list container status via Docker API
    - `get_alert_details` — get current alerts from Alertmanager
 5. **Diagnosis** is posted to Discord and saved as a JSON incident file
-6. **Startup reconciliation** checks Alertmanager for alerts that fired while the service was down
+6. **Startup reconciliation** checks for alerts that fired while the service was down
 
 ## API
 
@@ -112,6 +130,8 @@ All configuration is via environment variables. Variables prefixed with `ALERT_T
 | `/health` | GET | Health check |
 | `/incidents` | GET | List recent incidents (query: `?limit=20`) |
 | `/incidents/{id}` | GET | Get incident by ID |
+
+---
 
 ## License
 
