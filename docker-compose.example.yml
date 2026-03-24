@@ -1,0 +1,29 @@
+---
+services:
+  alert-triage:
+    image: ghcr.io/tylerwolf/alert-triage:0.1.0
+    container_name: alert-triage
+    restart: unless-stopped
+    env_file: alert-triage.env
+    environment:
+      # Point to your monitoring stack (defaults assume Docker Compose service names)
+      - ALERT_TRIAGE_LOKI_URL=http://loki:3100
+      - ALERT_TRIAGE_PROMETHEUS_URL=http://prometheus:9090
+      - ALERT_TRIAGE_ALERTMANAGER_URL=http://alertmanager:9093
+      # Mount a custom system prompt describing your environment (optional)
+      - ALERT_TRIAGE_SYSTEM_PROMPT_FILE=/config/system-prompt.md
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alert_triage_data:/data
+      # Mount your environment-specific system prompt
+      - ./system-prompt.md:/config/system-prompt.md:ro
+    ports:
+      - "8099:8099"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8099/health')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  alert_triage_data:

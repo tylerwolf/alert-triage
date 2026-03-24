@@ -1,0 +1,21 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "alert-triage"
+version = "0.1.0"
+description = "AI-powered alert diagnosis for Docker Compose stacks"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic",
+    "fastapi",
+    "uvicorn[standard]",
+    "httpx",
+    "pydantic-settings",
+]
+
+[project.urls]
+Repository = "https://github.com/tylerwolf/alert-triage"
