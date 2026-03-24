@@ -1,7 +1,7 @@
 # alert-triage
 
 [![CI](https://github.com/tylerwolf/alert-triage/actions/workflows/ci.yml/badge.svg)](https://github.com/tylerwolf/alert-triage/actions/workflows/ci.yml)
-[![Release](https://github.com/tylerwolf/alert-triage/actions/workflows/release.yml/badge.svg)](https://github.com/tylerwolf/alert-triage/actions/workflows/release.yml)
+[![Release](https://img.shields.io/github/v/release/tylerwolf/alert-triage)](https://github.com/tylerwolf/alert-triage/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 
