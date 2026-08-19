@@ -142,7 +142,7 @@ async def investigate(
             if text_parts:
                 final_text = "\n".join(text_parts)
 
-            if response.stop_reason == "end_of_turn" or not tool_uses:
+            if response.stop_reason == "end_turn" or not tool_uses:
                 break
 
             messages.append({"role": "assistant", "content": response.content})
