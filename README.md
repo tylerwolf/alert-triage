@@ -32,7 +32,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```yaml
 services:
   alert-triage:
-    image: ghcr.io/tylerwolf/alert-triage:0.1.0
+    image: ghcr.io/tylerwolf/alert-triage:0.2.0
     container_name: alert-triage
     restart: unless-stopped
     env_file: alert-triage.env
@@ -57,7 +57,7 @@ receivers:
   - name: alert-triage
     webhook_configs:
       - url: http://alert-triage:8099/webhook
-        send_resolved: false
+        send_resolved: true
 ```
 
 That's it. Alerts fire, investigations run, diagnoses land in Discord.
@@ -92,8 +92,10 @@ All configuration is via environment variables. Variables prefixed with `ALERT_T
 | `ALERT_TRIAGE_DOCKER_SOCKET` | `/var/run/docker.sock` | Docker socket path |
 | `ALERT_TRIAGE_INCIDENTS_DIR` | `/data/incidents` | Directory for incident JSON files |
 | `ALERT_TRIAGE_SYSTEM_PROMPT_FILE` | `None` | Path to environment description markdown |
-| `ALERT_TRIAGE_DEDUP_WINDOW` | `1800` | Seconds to suppress duplicate alert sets |
 | `ALERT_TRIAGE_COALESCE_WINDOW` | `45` | Seconds to buffer alerts before investigating |
+| `ALERT_TRIAGE_INCIDENT_TTL` | `86400` | Auto-resolve open incidents after this many idle seconds |
+| `ALERT_TRIAGE_REOPEN_WINDOW` | `1800` | Re-firing within this window reopens a resolved incident |
+| `ALERT_TRIAGE_UPDATE_MIN_INTERVAL` | `3600` | Min seconds between "still firing" update notifications |
 | `ALERT_TRIAGE_MAX_CONCURRENT` | `3` | Max concurrent investigations |
 | `ALERT_TRIAGE_MAX_ITERATIONS` | `10` | Max tool-calling loop iterations per investigation |
 | `ALERT_TRIAGE_MAX_TOKENS` | `1024` | Max response tokens per Claude call |
@@ -104,16 +106,19 @@ All configuration is via environment variables. Variables prefixed with `ALERT_T
 ## How It Works
 
 ```
-Alertmanager ──webhook──▶ Coalesce (45s) ──▶ Dedup ──▶ Claude Investigation ──▶ Discord
-                                                            │
-                                                  ┌─────────┼─────────┐
-                                                  ▼         ▼         ▼
-                                                Loki   Prometheus  Docker
+Alertmanager ──webhook──▶ Coalesce (45s) ──▶ Correlate ──▶ Claude Investigation ──▶ Discord
+                                                                 │
+                                                       ┌─────────┼─────────┐
+                                                       ▼         ▼         ▼
+                                                     Loki   Prometheus  Docker
 ```
 
 1. **Alertmanager** sends a webhook when alerts fire
 2. **Coalescing** buffers alerts for 45s to group related alerts into one investigation
-3. **Dedup** skips alert sets already investigated in the last 30 minutes
+3. **Correlation** matches repeats and new alerts to existing open incidents: unchanged
+   alert sets get lightweight status updates (throttled to one per hour), new alerts
+   joining an incident trigger a focused delta investigation, and alerts that re-fire
+   shortly after resolving reopen the incident instead of starting a new one
 4. **Claude** receives the alert details and investigates using four tools:
    - `query_loki` — search container logs via LogQL
    - `query_prometheus` — query metrics via PromQL
