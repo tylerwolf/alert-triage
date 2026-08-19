@@ -31,9 +31,13 @@ class Settings(BaseSettings):
     system_prompt_file: Path | None = None
 
     # Timing
-    dedup_window: int = 1800  # seconds
     coalesce_window: int = 45  # seconds
     max_concurrent: int = 3
+
+    # Incident correlation
+    incident_ttl: int = 86400  # auto-resolve open incidents after this many idle seconds
+    reopen_window: int = 1800  # re-firing within this window reopens a resolved incident
+    update_min_interval: int = 3600  # min seconds between "still firing" updates
 
     # Startup reconciliation
     startup_reconcile: bool = True

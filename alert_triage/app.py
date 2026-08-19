@@ -1,17 +1,17 @@
-"""FastAPI application — webhook routes, coalescing, dedup, startup reconciliation."""
+"""FastAPI application — webhook routes, correlation, coalescing, startup reconciliation."""
 
 import asyncio
 import logging
-import time
 import uuid
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
 from .config import Settings, build_system_prompt
-from .incidents import IncidentStore
-from .investigation import investigate
+from .incidents import IncidentStore, alert_fingerprint
+from .investigation import check_status_change, investigate
 from .notifications import DiscordNotifier, NullNotifier
 
 app = FastAPI(title="Alert Triage")
@@ -27,9 +27,6 @@ if settings.discord_webhook_url:
 else:
     notifier = NullNotifier()
 
-# Deduplication: frozenset of (alertname, instance) -> last investigation timestamp
-_recent: dict[frozenset, float] = {}
-
 # Concurrency cap
 _semaphore = asyncio.Semaphore(settings.max_concurrent)
 
@@ -38,14 +35,22 @@ _coalesce: dict | None = None
 _coalesce_lock = asyncio.Lock()
 
 
-def _alert_fingerprint(alerts: list[dict]) -> frozenset:
-    return frozenset(
-        (
-            a.get("labels", {}).get("alertname", ""),
-            a.get("labels", {}).get("instance", ""),
-        )
-        for a in alerts
-    )
+def _alertname(alerts: list[dict]) -> str:
+    names = sorted({a.get("labels", {}).get("alertname", "unknown") for a in alerts})
+    return "+".join(names) if names else "unknown"
+
+
+def _format_duration(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    hours, rem = divmod(seconds, 3600)
+    return f"{hours}h {rem // 60}m"
+
+
+def _incident_age(incident: dict) -> float:
+    started = datetime.fromisoformat(incident["timestamp"])
+    return (datetime.now(timezone.utc) - started).total_seconds()
 
 
 async def _flush_coalesce() -> None:
@@ -57,14 +62,6 @@ async def _flush_coalesce() -> None:
             return
         alerts = _coalesce["alerts"]
         _coalesce = None
-
-    fp = _alert_fingerprint(alerts)
-    _recent[fp] = time.time()
-
-    now = time.time()
-    expired = [k for k, v in _recent.items() if now - v > settings.dedup_window]
-    for k in expired:
-        del _recent[k]
 
     incident_id = str(uuid.uuid4())[:8]
     alert_desc = ", ".join(
@@ -86,6 +83,92 @@ async def _flush_coalesce() -> None:
             notifier,
             incident_store,
         )
+
+
+async def _handle_repeat(incident: dict, alerts: list[dict]) -> str:
+    """Handle firing alerts that correlate to an existing open incident.
+
+    Returns a short status string for the webhook response.
+    """
+    incident_id = incident["incident_id"]
+    known_fps = set(incident.get("alert_fingerprints", {}))
+    new_alerts = [a for a in alerts if alert_fingerprint(a) not in known_fps]
+
+    if new_alerts:
+        # Alert set changed — focused delta investigation with prior context
+        incident_store.add_alerts(incident_id, new_alerts)
+        log.info(
+            "Incident %s: %d new alert(s) joined, running delta investigation",
+            incident_id,
+            len(new_alerts),
+        )
+
+        async def _delta() -> None:
+            async with _semaphore:
+                await investigate(
+                    {"alerts": alerts},
+                    incident_id,
+                    settings,
+                    system_prompt,
+                    notifier,
+                    incident_store,
+                    context=incident.get("diagnosis", ""),
+                    append_to=incident_id,
+                )
+
+        asyncio.create_task(_delta())
+        return "delta_investigation"
+
+    # Same alert set — lightweight check, no Claude call
+    delta = await check_status_change(incident, settings)
+    age = _format_duration(_incident_age(incident))
+
+    last_notified = incident.get("last_notified_at") or incident.get("timestamp")
+    since_notified = (
+        datetime.now(timezone.utc) - datetime.fromisoformat(last_notified)
+    ).total_seconds()
+    should_notify = since_notified >= settings.update_min_interval
+
+    if delta:
+        message = f"Ongoing for {age}. Situation changed:\n{delta}"
+    else:
+        message = f"Still firing — no change since initial diagnosis ({age} ago)."
+
+    incident_store.append_update(
+        incident_id,
+        {"type": "repeat", "message": message},
+        notified=should_notify,
+    )
+    if should_notify:
+        await notifier.send_update(_alertname(alerts), message, incident_id)
+        log.info("Incident %s: posted status update (%s)", incident_id, age)
+    else:
+        log.info(
+            "Incident %s: repeat received, update throttled (%ds since last notify)",
+            incident_id,
+            since_notified,
+        )
+    return "correlated"
+
+
+async def _handle_resolved(alerts: list[dict]) -> str:
+    fps = {alert_fingerprint(a) for a in alerts}
+    incident = incident_store.find_by_fingerprints(
+        fps, settings.incident_ttl, settings.reopen_window
+    )
+    if incident is None or incident.get("status") != "open":
+        log.info("Resolved alerts with no matching open incident, ignoring")
+        return "no_match"
+
+    incident_id = incident["incident_id"]
+    updated = incident_store.mark_alerts_resolved(incident_id, fps)
+    if updated is not None and updated.get("status") == "resolved":
+        duration = _format_duration(_incident_age(updated))
+        log.info("Incident %s fully resolved after %s", incident_id, duration)
+        await notifier.send_resolved(_alertname(alerts), incident_id, duration)
+        return "resolved"
+    log.info("Incident %s: %d alert(s) resolved, incident still open", incident_id, len(fps))
+    return "partially_resolved"
 
 
 @app.on_event("startup")
@@ -119,6 +202,20 @@ async def startup_reconcile() -> None:
             log.info("Startup reconciliation: no active non-silenced alerts")
             return
 
+        # Correlate against existing open incidents so a restart mid-outage
+        # doesn't spawn a duplicate investigation.
+        fps = {alert_fingerprint(a) for a in active}
+        incident = incident_store.find_by_fingerprints(
+            fps, settings.incident_ttl, settings.reopen_window
+        )
+        if incident is not None and incident.get("status") == "open":
+            log.info(
+                "Startup reconciliation: alerts correlate to open incident %s",
+                incident["incident_id"],
+            )
+            await _handle_repeat(incident, active)
+            return
+
         alertnames = sorted({a.get("labels", {}).get("alertname", "?") for a in active})
         log.info(
             "Startup reconciliation: found %d active alert(s) [%s], investigating",
@@ -144,30 +241,44 @@ async def webhook(request: Request) -> JSONResponse:
     global _coalesce
     payload = await request.json()
 
-    if payload.get("status") != "firing":
-        return JSONResponse({"status": "ignored", "reason": "not firing"})
-
     incoming_alerts = payload.get("alerts", [])
     if not incoming_alerts:
         return JSONResponse({"status": "ignored", "reason": "no alerts"})
 
-    fp = _alert_fingerprint(incoming_alerts)
-    now = time.time()
-    if fp in _recent and (now - _recent[fp]) < settings.dedup_window:
-        log.info("Dedup: skipping (investigated %.0fs ago)", now - _recent[fp])
-        return JSONResponse({"status": "deduped"})
+    status = payload.get("status")
+    if status == "resolved":
+        result = await _handle_resolved(incoming_alerts)
+        return JSONResponse({"status": result})
+    if status != "firing":
+        return JSONResponse({"status": "ignored", "reason": f"status {status}"})
+
+    fps = {alert_fingerprint(a) for a in incoming_alerts}
+    incident = incident_store.find_by_fingerprints(
+        fps, settings.incident_ttl, settings.reopen_window
+    )
+
+    if incident is not None:
+        if incident.get("status") == "resolved":
+            # Re-fired shortly after resolution — reopen instead of new incident
+            incident_id = incident["incident_id"]
+            incident_store.reopen(incident_id, incoming_alerts)
+            age = _format_duration(_incident_age(incident))
+            log.info("Incident %s reopened (flap)", incident_id)
+            await notifier.send_update(
+                _alertname(incoming_alerts),
+                f"Alert re-fired shortly after resolution (flapping?). "
+                f"Reopening incident (originally started {age} ago).",
+                incident_id,
+            )
+            return JSONResponse({"status": "reopened"})
+        result = await _handle_repeat(incident, incoming_alerts)
+        return JSONResponse({"status": result})
 
     async with _coalesce_lock:
         if _coalesce is None:
             _coalesce = {
                 "alerts": list(incoming_alerts),
-                "seen": {
-                    (
-                        a.get("labels", {}).get("alertname", ""),
-                        a.get("labels", {}).get("instance", ""),
-                    )
-                    for a in incoming_alerts
-                },
+                "seen": {alert_fingerprint(a) for a in incoming_alerts},
             }
             _coalesce["task"] = asyncio.create_task(_flush_coalesce())
             log.info(
@@ -179,10 +290,7 @@ async def webhook(request: Request) -> JSONResponse:
         else:
             added = 0
             for a in incoming_alerts:
-                key = (
-                    a.get("labels", {}).get("alertname", ""),
-                    a.get("labels", {}).get("instance", ""),
-                )
+                key = alert_fingerprint(a)
                 if key not in _coalesce["seen"]:
                     _coalesce["alerts"].append(a)
                     _coalesce["seen"].add(key)
