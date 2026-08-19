@@ -19,3 +19,8 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/tylerwolf/alert-triage"
+
+[tool.ruff.lint]
+# Broad exception catches around external calls (Discord, Prometheus,
+# Alertmanager, Docker) are intentional resilience; failures are logged.
+ignore = ["BLE001"]

@@ -35,8 +35,12 @@ class Settings(BaseSettings):
     max_concurrent: int = 3
 
     # Incident correlation
-    incident_ttl: int = 86400  # auto-resolve open incidents after this many idle seconds
-    reopen_window: int = 1800  # re-firing within this window reopens a resolved incident
+    incident_ttl: int = (
+        86400  # auto-resolve open incidents after this many idle seconds
+    )
+    reopen_window: int = (
+        1800  # re-firing within this window reopens a resolved incident
+    )
     update_min_interval: int = 3600  # min seconds between "still firing" updates
 
     # Startup reconciliation

@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -21,7 +21,7 @@ def alert_fingerprint(alert: dict) -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _parse_ts(value: str | None) -> datetime | None:
@@ -168,7 +168,9 @@ class IncidentStore:
             data["last_notified_at"] = now
         self._write(incident_id, data)
 
-    def mark_alerts_resolved(self, incident_id: str, fingerprints: set[str]) -> dict | None:
+    def mark_alerts_resolved(
+        self, incident_id: str, fingerprints: set[str]
+    ) -> dict | None:
         """Mark alerts resolved; close the incident when none remain firing.
 
         Returns the updated incident data.
@@ -218,7 +220,11 @@ class IncidentStore:
             if fp in fps:
                 fps[fp]["status"] = "firing"
         data.setdefault("updates", []).append(
-            {"timestamp": now, "type": "reopened", "message": "Alert re-fired shortly after resolution (flap)"}
+            {
+                "timestamp": now,
+                "type": "reopened",
+                "message": "Alert re-fired shortly after resolution (flap)",
+            }
         )
         data["last_update_at"] = now
         self._write(incident_id, data)

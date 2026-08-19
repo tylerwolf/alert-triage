@@ -3,7 +3,7 @@
 import asyncio
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import httpx
 from fastapi import FastAPI, Query, Request
@@ -50,7 +50,7 @@ def _format_duration(seconds: float) -> str:
 
 def _incident_age(incident: dict) -> float:
     started = datetime.fromisoformat(incident["timestamp"])
-    return (datetime.now(timezone.utc) - started).total_seconds()
+    return (datetime.now(UTC) - started).total_seconds()
 
 
 async def _flush_coalesce() -> None:
@@ -125,7 +125,7 @@ async def _handle_repeat(incident: dict, alerts: list[dict]) -> str:
 
     last_notified = incident.get("last_notified_at") or incident.get("timestamp")
     since_notified = (
-        datetime.now(timezone.utc) - datetime.fromisoformat(last_notified)
+        datetime.now(UTC) - datetime.fromisoformat(last_notified)
     ).total_seconds()
     should_notify = since_notified >= settings.update_min_interval
 
@@ -167,7 +167,9 @@ async def _handle_resolved(alerts: list[dict]) -> str:
         log.info("Incident %s fully resolved after %s", incident_id, duration)
         await notifier.send_resolved(_alertname(alerts), incident_id, duration)
         return "resolved"
-    log.info("Incident %s: %d alert(s) resolved, incident still open", incident_id, len(fps))
+    log.info(
+        "Incident %s: %d alert(s) resolved, incident still open", incident_id, len(fps)
+    )
     return "partially_resolved"
 
 

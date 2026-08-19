@@ -1,7 +1,7 @@
 """Notification backends for sending investigation results."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Protocol
 
 import httpx
@@ -29,7 +29,9 @@ class DiscordNotifier:
     def __init__(self, webhook_url: str) -> None:
         self.webhook_url = webhook_url
 
-    async def _post(self, title: str, description: str, color: int, footer: str) -> None:
+    async def _post(
+        self, title: str, description: str, color: int, footer: str
+    ) -> None:
         if len(description) > 4000:
             description = description[:3997] + "..."
         embed = {
@@ -37,7 +39,7 @@ class DiscordNotifier:
             "description": description,
             "color": color,
             "footer": {"text": footer},
-            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
         }
         async with httpx.AsyncClient() as http:
             try:
@@ -57,9 +59,7 @@ class DiscordNotifier:
             footer=f"Incident: {incident_id}",
         )
 
-    async def send_update(
-        self, alertname: str, message: str, incident_id: str
-    ) -> None:
+    async def send_update(self, alertname: str, message: str, incident_id: str) -> None:
         await self._post(
             title=f"Incident Update: {alertname}",
             description=message,
@@ -82,9 +82,7 @@ class NullNotifier:
     async def send(self, alertname: str, analysis: str, incident_id: str) -> None:
         log.info("Notification suppressed (no notifier configured) for %s", alertname)
 
-    async def send_update(
-        self, alertname: str, message: str, incident_id: str
-    ) -> None:
+    async def send_update(self, alertname: str, message: str, incident_id: str) -> None:
         log.info("Update notification suppressed for %s", alertname)
 
     async def send_resolved(

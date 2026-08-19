@@ -14,9 +14,7 @@ from .tools import TOOLS, execute_tool
 log = logging.getLogger("alert-triage")
 
 
-async def check_status_change(
-    incident: dict, settings: Settings
-) -> str | None:
+async def check_status_change(incident: dict, settings: Settings) -> str | None:
     """Lightweight delta check for an ongoing incident (no Claude call).
 
     Queries Prometheus for currently-firing alerts and compares against the
