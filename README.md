@@ -32,7 +32,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```yaml
 services:
   alert-triage:
-    image: ghcr.io/tylerwolf/alert-triage:0.2.1
+    image: ghcr.io/tylerwolf/alert-triage:0.2.2
     container_name: alert-triage
     restart: unless-stopped
     env_file: alert-triage.env
@@ -85,7 +85,7 @@ All configuration is via environment variables. Variables prefixed with `ALERT_T
 |---|---|---|
 | `ANTHROPIC_API_KEY` | *(required)* | Anthropic API key |
 | `DISCORD_WEBHOOK_URL` | `None` | Discord webhook URL (omit to disable notifications) |
-| `ALERT_TRIAGE_MODEL` | `claude-sonnet-4-6` | Claude model to use |
+| `ALERT_TRIAGE_MODEL` | `claude-opus-5` | Claude model to use |
 | `ALERT_TRIAGE_LOKI_URL` | `http://loki:3100` | Loki base URL |
 | `ALERT_TRIAGE_PROMETHEUS_URL` | `http://prometheus:9090` | Prometheus base URL |
 | `ALERT_TRIAGE_ALERTMANAGER_URL` | `http://alertmanager:9093` | Alertmanager base URL |
@@ -98,7 +98,7 @@ All configuration is via environment variables. Variables prefixed with `ALERT_T
 | `ALERT_TRIAGE_UPDATE_MIN_INTERVAL` | `3600` | Min seconds between "still firing" update notifications |
 | `ALERT_TRIAGE_MAX_CONCURRENT` | `3` | Max concurrent investigations |
 | `ALERT_TRIAGE_MAX_ITERATIONS` | `10` | Max tool-calling loop iterations per investigation |
-| `ALERT_TRIAGE_MAX_TOKENS` | `1024` | Max response tokens per Claude call |
+| `ALERT_TRIAGE_MAX_TOKENS` | `4096` | Max response tokens per Claude call |
 | `ALERT_TRIAGE_STARTUP_RECONCILE` | `true` | Check for firing alerts on startup |
 | `ALERT_TRIAGE_RECONCILE_DELAY` | `30` | Seconds to wait before startup reconciliation |
 | `ALERT_TRIAGE_PORT` | `8099` | Server port |

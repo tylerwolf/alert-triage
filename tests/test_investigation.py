@@ -47,7 +47,9 @@ class TestInvestigate:
         )
         await investigate(make_payload(), "abc12345", settings, "sys", notifier, store)
         assert len(fake.calls) == 1
-        assert fake.calls[0]["system"] == "sys"
+        assert fake.calls[0]["system"] == [
+            {"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}
+        ]
         data = store.get("abc12345")
         assert data["diagnosis"] == "the diagnosis"
         assert data["tokens"] == {"input": 100, "output": 50}
@@ -151,6 +153,34 @@ class TestInvestigate:
         )
         await investigate(make_payload(), "abc12345", settings, "sys", notifier, store)
         assert store.get("abc12345")["tokens"] == {"input": 300, "output": 30}
+
+    async def test_cache_marker_moves_to_latest_tool_results(
+        self, monkeypatch, settings, notifier, store
+    ):
+        fake = _patch_anthropic(
+            monkeypatch,
+            [
+                fake_response(
+                    [tool_use_block("query_loki", {"query": "{}"}, "tu_1")],
+                    stop_reason="tool_use",
+                ),
+                fake_response(
+                    [tool_use_block("query_loki", {"query": "{}"}, "tu_2")],
+                    stop_reason="tool_use",
+                ),
+                fake_response([text_block("done")]),
+            ],
+        )
+        monkeypatch.setattr(
+            investigation_module, "execute_tool", AsyncMock(return_value="out")
+        )
+        await investigate(make_payload(), "abc12345", settings, "sys", notifier, store)
+        assert len(fake.calls) == 3
+        messages = fake.calls[2]["messages"]
+        first_results = messages[2]["content"]
+        second_results = messages[4]["content"]
+        assert "cache_control" not in first_results[-1]
+        assert second_results[-1]["cache_control"] == {"type": "ephemeral"}
 
     async def test_delta_investigation_appends_to_incident(
         self, monkeypatch, settings, notifier, store

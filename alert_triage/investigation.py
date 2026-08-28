@@ -115,6 +115,16 @@ async def investigate(
 
     client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
     messages = [{"role": "user", "content": user_message}]
+    # Caching the system block also caches the TOOLS prefix ahead of it, so
+    # iterations 2+ of the loop re-read tools + system at 10% of input price.
+    system_blocks = [
+        {
+            "type": "text",
+            "text": system_prompt,
+            "cache_control": {"type": "ephemeral"},
+        }
+    ]
+    cached_tool_result: dict | None = None
     total_input_tokens = 0
     total_output_tokens = 0
     final_text = ""
@@ -124,7 +134,7 @@ async def investigate(
             response = client.messages.create(
                 model=settings.model,
                 max_tokens=settings.max_tokens,
-                system=system_prompt,
+                system=system_blocks,
                 tools=TOOLS,
                 messages=messages,
             )
@@ -170,6 +180,13 @@ async def investigate(
                         "content": result,
                     }
                 )
+            # Keep a single moving cache breakpoint on the newest tool result
+            # (the API allows at most 4 breakpoints per request, and stale
+            # markers left in history count toward that limit).
+            if cached_tool_result is not None:
+                cached_tool_result.pop("cache_control", None)
+            tool_results[-1]["cache_control"] = {"type": "ephemeral"}
+            cached_tool_result = tool_results[-1]
             messages.append({"role": "user", "content": tool_results})
 
     total_duration = time.monotonic() - start_time

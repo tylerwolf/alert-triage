@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     discord_webhook_url: str | None = Field(default=None, alias="DISCORD_WEBHOOK_URL")
 
     # Model & API
-    model: str = "claude-sonnet-4-6"
-    max_tokens: int = 1024
+    model: str = "claude-opus-5"
+    max_tokens: int = 4096
     max_iterations: int = 10
 
     # Service URLs
