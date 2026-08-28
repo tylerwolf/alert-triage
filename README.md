@@ -32,7 +32,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```yaml
 services:
   alert-triage:
-    image: ghcr.io/tylerwolf/alert-triage:0.2.2
+    image: ghcr.io/tylerwolf/alert-triage:0.2.3
     container_name: alert-triage
     restart: unless-stopped
     env_file: alert-triage.env
