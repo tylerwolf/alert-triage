@@ -52,7 +52,12 @@ class TestInvestigate:
         ]
         data = store.get("abc12345")
         assert data["diagnosis"] == "the diagnosis"
-        assert data["tokens"] == {"input": 100, "output": 50}
+        assert data["tokens"] == {
+            "input": 100,
+            "output": 50,
+            "cache_write": 0,
+            "cache_read": 0,
+        }
         assert data["tool_transcript"] == []
         assert notifier.calls == [("send", "TestAlert", "the diagnosis", "abc12345")]
 
@@ -144,15 +149,27 @@ class TestInvestigate:
                     stop_reason="tool_use",
                     input_tokens=100,
                     output_tokens=10,
+                    cache_write_tokens=4000,
                 ),
-                fake_response([text_block("done")], input_tokens=200, output_tokens=20),
+                fake_response(
+                    [text_block("done")],
+                    input_tokens=200,
+                    output_tokens=20,
+                    cache_write_tokens=500,
+                    cache_read_tokens=4000,
+                ),
             ],
         )
         monkeypatch.setattr(
             investigation_module, "execute_tool", AsyncMock(return_value="out")
         )
         await investigate(make_payload(), "abc12345", settings, "sys", notifier, store)
-        assert store.get("abc12345")["tokens"] == {"input": 300, "output": 30}
+        assert store.get("abc12345")["tokens"] == {
+            "input": 300,
+            "output": 30,
+            "cache_write": 4500,
+            "cache_read": 4000,
+        }
 
     async def test_cache_marker_moves_to_latest_tool_results(
         self, monkeypatch, settings, notifier, store

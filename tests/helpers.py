@@ -67,11 +67,18 @@ def fake_response(
     stop_reason: str = "end_turn",
     input_tokens: int = 100,
     output_tokens: int = 50,
+    cache_write_tokens: int = 0,
+    cache_read_tokens: int = 0,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         content=content,
         stop_reason=stop_reason,
-        usage=SimpleNamespace(input_tokens=input_tokens, output_tokens=output_tokens),
+        usage=SimpleNamespace(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_creation_input_tokens=cache_write_tokens,
+            cache_read_input_tokens=cache_read_tokens,
+        ),
     )
 
 

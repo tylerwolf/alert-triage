@@ -127,6 +127,8 @@ async def investigate(
     cached_tool_result: dict | None = None
     total_input_tokens = 0
     total_output_tokens = 0
+    total_cache_write_tokens = 0
+    total_cache_read_tokens = 0
     final_text = ""
 
     async with httpx.AsyncClient() as http:
@@ -140,6 +142,15 @@ async def investigate(
             )
             total_input_tokens += response.usage.input_tokens
             total_output_tokens += response.usage.output_tokens
+            # usage.input_tokens covers only uncached input; cached tokens are
+            # reported (and billed) separately, at 1.25x base for writes and
+            # 0.1x for reads.
+            total_cache_write_tokens += (
+                getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+            )
+            total_cache_read_tokens += (
+                getattr(response.usage, "cache_read_input_tokens", 0) or 0
+            )
 
             text_parts = []
             tool_uses = []
@@ -190,6 +201,12 @@ async def investigate(
             messages.append({"role": "user", "content": tool_results})
 
     total_duration = time.monotonic() - start_time
+    token_totals = {
+        "input": total_input_tokens,
+        "output": total_output_tokens,
+        "cache_write": total_cache_write_tokens,
+        "cache_read": total_cache_read_tokens,
+    }
 
     alertnames = sorted(
         {a.get("labels", {}).get("alertname", "unknown") for a in alerts}
@@ -204,10 +221,7 @@ async def investigate(
                 "alert_payload": alert_payload,
                 "tool_transcript": tool_transcript,
                 "diagnosis": final_text,
-                "tokens": {
-                    "input": total_input_tokens,
-                    "output": total_output_tokens,
-                },
+                "tokens": token_totals,
                 "duration_s": round(total_duration, 2),
             },
             notified=True,
@@ -221,7 +235,7 @@ async def investigate(
             tool_transcript=tool_transcript,
             diagnosis=final_text,
             model=settings.model,
-            tokens={"input": total_input_tokens, "output": total_output_tokens},
+            tokens=token_totals,
             duration_s=total_duration,
         )
         log.info("Incident saved to %s", incident_file)
