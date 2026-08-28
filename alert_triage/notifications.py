@@ -11,6 +11,7 @@ log = logging.getLogger("alert-triage")
 COLOR_INVESTIGATION = 0x9B59B6  # purple
 COLOR_UPDATE = 0x95A5A6  # muted grey
 COLOR_RESOLVED = 0x2ECC71  # green
+COLOR_FAILURE = 0xE74C3C  # red
 
 
 class Notifier(Protocol):
@@ -23,6 +24,8 @@ class Notifier(Protocol):
     async def send_resolved(
         self, alertname: str, incident_id: str, duration_str: str
     ) -> None: ...
+
+    async def send_failure(self, alertname: str, message: str) -> None: ...
 
 
 class DiscordNotifier:
@@ -77,6 +80,14 @@ class DiscordNotifier:
             footer=f"Incident: {incident_id}",
         )
 
+    async def send_failure(self, alertname: str, message: str) -> None:
+        await self._post(
+            title=f"Triage Failed: {alertname}",
+            description=message,
+            color=COLOR_FAILURE,
+            footer="No incident recorded",
+        )
+
 
 class NullNotifier:
     async def send(self, alertname: str, analysis: str, incident_id: str) -> None:
@@ -89,3 +100,6 @@ class NullNotifier:
         self, alertname: str, incident_id: str, duration_str: str
     ) -> None:
         log.info("Resolved notification suppressed for %s", alertname)
+
+    async def send_failure(self, alertname: str, message: str) -> None:
+        log.info("Failure notification suppressed for %s", alertname)

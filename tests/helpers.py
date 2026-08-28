@@ -20,6 +20,9 @@ class RecordingNotifier:
     ) -> None:
         self.calls.append(("send_resolved", alertname, incident_id, duration_str))
 
+    async def send_failure(self, alertname: str, message: str) -> None:
+        self.calls.append(("send_failure", alertname, message))
+
     def kinds(self) -> list[str]:
         return [c[0] for c in self.calls]
 

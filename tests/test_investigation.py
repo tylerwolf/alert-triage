@@ -1,5 +1,6 @@
 """Tests for the Claude investigation loop and delta checks (investigation.py)."""
 
+from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import httpx
@@ -198,6 +199,50 @@ class TestInvestigate:
         second_results = messages[4]["content"]
         assert "cache_control" not in first_results[-1]
         assert second_results[-1]["cache_control"] == {"type": "ephemeral"}
+
+    async def test_api_failure_notifies_and_records_nothing(
+        self, monkeypatch, settings, notifier, store
+    ):
+        class RaisingAnthropic:
+            def __init__(self) -> None:
+                self.messages = SimpleNamespace(create=self._create)
+
+            def _create(self, **kwargs):
+                raise RuntimeError("boom")
+
+        monkeypatch.setattr(
+            investigation_module.anthropic,
+            "Anthropic",
+            lambda api_key: RaisingAnthropic(),
+        )
+        await investigate(make_payload(), "abc12345", settings, "sys", notifier, store)
+        assert store.get("abc12345") is None
+        assert notifier.kinds() == ["send_failure"]
+        _kind, alertname, message = notifier.calls[0]
+        assert alertname == "TestAlert"
+        assert "RuntimeError" in message
+        assert "credit balance" not in message
+
+    async def test_credit_exhaustion_failure_includes_reload_hint(
+        self, monkeypatch, settings, notifier, store
+    ):
+        class RaisingAnthropic:
+            def __init__(self) -> None:
+                self.messages = SimpleNamespace(create=self._create)
+
+            def _create(self, **kwargs):
+                raise RuntimeError(
+                    "Your credit balance is too low to access the Anthropic API."
+                )
+
+        monkeypatch.setattr(
+            investigation_module.anthropic,
+            "Anthropic",
+            lambda api_key: RaisingAnthropic(),
+        )
+        await investigate(make_payload(), "abc12345", settings, "sys", notifier, store)
+        assert notifier.kinds() == ["send_failure"]
+        assert "credit balance appears to be exhausted" in notifier.calls[0][2]
 
     async def test_delta_investigation_appends_to_incident(
         self, monkeypatch, settings, notifier, store

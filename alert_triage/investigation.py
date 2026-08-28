@@ -131,74 +131,94 @@ async def investigate(
     total_cache_read_tokens = 0
     final_text = ""
 
-    async with httpx.AsyncClient() as http:
-        for _iteration in range(settings.max_iterations):
-            response = client.messages.create(
-                model=settings.model,
-                max_tokens=settings.max_tokens,
-                system=system_blocks,
-                tools=TOOLS,
-                messages=messages,
-            )
-            total_input_tokens += response.usage.input_tokens
-            total_output_tokens += response.usage.output_tokens
-            # usage.input_tokens covers only uncached input; cached tokens are
-            # reported (and billed) separately, at 1.25x base for writes and
-            # 0.1x for reads.
-            total_cache_write_tokens += (
-                getattr(response.usage, "cache_creation_input_tokens", 0) or 0
-            )
-            total_cache_read_tokens += (
-                getattr(response.usage, "cache_read_input_tokens", 0) or 0
-            )
+    alertnames = sorted(
+        {a.get("labels", {}).get("alertname", "unknown") for a in alerts}
+    )
+    alertname = "+".join(alertnames) if alertnames else "unknown"
 
-            text_parts = []
-            tool_uses = []
-            for block in response.content:
-                if block.type == "text":
-                    text_parts.append(block.text)
-                elif block.type == "tool_use":
-                    tool_uses.append(block)
-
-            if text_parts:
-                final_text = "\n".join(text_parts)
-
-            if response.stop_reason == "end_turn" or not tool_uses:
-                break
-
-            messages.append({"role": "assistant", "content": response.content})
-            tool_results = []
-            for tool_use in tool_uses:
-                tool_start = time.monotonic()
-                result = await execute_tool(
-                    tool_use.name, tool_use.input, http, settings
+    try:
+        async with httpx.AsyncClient() as http:
+            for _iteration in range(settings.max_iterations):
+                response = client.messages.create(
+                    model=settings.model,
+                    max_tokens=settings.max_tokens,
+                    system=system_blocks,
+                    tools=TOOLS,
+                    messages=messages,
                 )
-                tool_duration = time.monotonic() - tool_start
-                if len(result) > 4000:
-                    result = result[:4000] + "\n... (truncated)"
-                tool_transcript.append(
-                    {
-                        "tool": tool_use.name,
-                        "input": tool_use.input,
-                        "output": result,
-                        "duration_s": round(tool_duration, 2),
-                    }
+                total_input_tokens += response.usage.input_tokens
+                total_output_tokens += response.usage.output_tokens
+                # usage.input_tokens covers only uncached input; cached tokens
+                # are reported (and billed) separately, at 1.25x base for
+                # writes and 0.1x for reads.
+                total_cache_write_tokens += (
+                    getattr(response.usage, "cache_creation_input_tokens", 0) or 0
                 )
-                tool_results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_use.id,
-                        "content": result,
-                    }
+                total_cache_read_tokens += (
+                    getattr(response.usage, "cache_read_input_tokens", 0) or 0
                 )
-            # Keep a single moving cache breakpoint on the newest tool result
-            # (the API allows at most 4 breakpoints per request, and stale
-            # markers left in history count toward that limit).
-            if cached_tool_result is not None:
-                cached_tool_result.pop("cache_control", None)
-            tool_results[-1]["cache_control"] = {"type": "ephemeral"}
-            cached_tool_result = tool_results[-1]
-            messages.append({"role": "user", "content": tool_results})
+
+                text_parts = []
+                tool_uses = []
+                for block in response.content:
+                    if block.type == "text":
+                        text_parts.append(block.text)
+                    elif block.type == "tool_use":
+                        tool_uses.append(block)
+
+                if text_parts:
+                    final_text = "\n".join(text_parts)
+
+                if response.stop_reason == "end_turn" or not tool_uses:
+                    break
+
+                messages.append({"role": "assistant", "content": response.content})
+                tool_results = []
+                for tool_use in tool_uses:
+                    tool_start = time.monotonic()
+                    result = await execute_tool(
+                        tool_use.name, tool_use.input, http, settings
+                    )
+                    tool_duration = time.monotonic() - tool_start
+                    if len(result) > 4000:
+                        result = result[:4000] + "\n... (truncated)"
+                    tool_transcript.append(
+                        {
+                            "tool": tool_use.name,
+                            "input": tool_use.input,
+                            "output": result,
+                            "duration_s": round(tool_duration, 2),
+                        }
+                    )
+                    tool_results.append(
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": tool_use.id,
+                            "content": result,
+                        }
+                    )
+                # Keep a single moving cache breakpoint on the newest tool
+                # result (the API allows at most 4 breakpoints per request, and
+                # stale markers left in history count toward that limit).
+                if cached_tool_result is not None:
+                    cached_tool_result.pop("cache_control", None)
+                tool_results[-1]["cache_control"] = {"type": "ephemeral"}
+                cached_tool_result = tool_results[-1]
+                messages.append({"role": "user", "content": tool_results})
+    except Exception as e:
+        log.exception("Investigation %s failed", incident_id)
+        error = f"`{type(e).__name__}`: {e}"
+        if "credit balance" in str(e).lower():
+            error += (
+                "\n\n**Your Anthropic credit balance appears to be exhausted.** "
+                "Reload it to restore AI triage."
+            )
+        error += (
+            "\n\nNo diagnosis was produced and no incident was recorded; a fresh "
+            "investigation will run when the alert re-fires or repeats."
+        )
+        await notifier.send_failure(alertname, error)
+        return
 
     total_duration = time.monotonic() - start_time
     token_totals = {
@@ -207,11 +227,6 @@ async def investigate(
         "cache_write": total_cache_write_tokens,
         "cache_read": total_cache_read_tokens,
     }
-
-    alertnames = sorted(
-        {a.get("labels", {}).get("alertname", "unknown") for a in alerts}
-    )
-    alertname = "+".join(alertnames) if alertnames else "unknown"
 
     if append_to:
         incident_store.append_update(
