@@ -221,19 +221,26 @@ class TestInvestigate:
         _kind, alertname, message = notifier.calls[0]
         assert alertname == "TestAlert"
         assert "RuntimeError" in message
-        assert "credit balance" not in message
+        assert "billing issue" not in message
 
-    async def test_credit_exhaustion_failure_includes_reload_hint(
-        self, monkeypatch, settings, notifier, store
+    @pytest.mark.parametrize(
+        "exc",
+        [
+            RuntimeError("Your credit balance is too low to access the Anthropic API."),
+            type("BillingError", (Exception,), {"status_code": 402})("payment issue"),
+            RuntimeError("organization spend limit reached"),
+        ],
+        ids=["credit-message", "402-status", "spend-limit-message"],
+    )
+    async def test_billing_failure_includes_reload_hint(
+        self, monkeypatch, settings, notifier, store, exc
     ):
         class RaisingAnthropic:
             def __init__(self) -> None:
                 self.messages = SimpleNamespace(create=self._create)
 
             def _create(self, **kwargs):
-                raise RuntimeError(
-                    "Your credit balance is too low to access the Anthropic API."
-                )
+                raise exc
 
         monkeypatch.setattr(
             investigation_module.anthropic,
@@ -242,7 +249,7 @@ class TestInvestigate:
         )
         await investigate(make_payload(), "abc12345", settings, "sys", notifier, store)
         assert notifier.kinds() == ["send_failure"]
-        assert "credit balance appears to be exhausted" in notifier.calls[0][2]
+        assert "billing issue" in notifier.calls[0][2]
 
     async def test_delta_investigation_appends_to_incident(
         self, monkeypatch, settings, notifier, store

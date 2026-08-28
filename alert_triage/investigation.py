@@ -208,10 +208,18 @@ async def investigate(
     except Exception as e:
         log.exception("Investigation %s failed", incident_id)
         error = f"`{type(e).__name__}`: {e}"
-        if "credit balance" in str(e).lower():
+        # Billing problems surface as 402 billing_error; exhausted prepaid
+        # credits and self-set spend limits have historically come back as a
+        # 400 mentioning the credit balance, and tier spend caps as a 429.
+        # Match status code first, message keywords as fallback.
+        msg = str(e).lower()
+        if getattr(e, "status_code", None) == 402 or any(
+            k in msg for k in ("credit balance", "billing", "spend limit")
+        ):
             error += (
-                "\n\n**Your Anthropic credit balance appears to be exhausted.** "
-                "Reload it to restore AI triage."
+                "\n\n**This looks like an Anthropic billing issue** (exhausted "
+                "credits or a spend limit). Reload credits or raise the limit "
+                "to restore AI triage."
             )
         error += (
             "\n\nNo diagnosis was produced and no incident was recorded; a fresh "
