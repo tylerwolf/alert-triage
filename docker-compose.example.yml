@@ -1,7 +1,7 @@
 ---
 services:
   alert-triage:
-    image: ghcr.io/tylerwolf/alert-triage:0.2.4
+    image: ghcr.io/tylerwolf/alert-triage:0.2.5
     container_name: alert-triage
     restart: unless-stopped
     env_file: alert-triage.env

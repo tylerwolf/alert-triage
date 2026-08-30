@@ -32,7 +32,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```yaml
 services:
   alert-triage:
-    image: ghcr.io/tylerwolf/alert-triage:0.2.4
+    image: ghcr.io/tylerwolf/alert-triage:0.2.5
     container_name: alert-triage
     restart: unless-stopped
     env_file: alert-triage.env
@@ -138,6 +138,7 @@ Alertmanager ──webhook──▶ Coalesce (45s) ──▶ Correlate ──▶
 | `/health` | GET | Health check |
 | `/incidents` | GET | List recent incidents (query: `?limit=20`) |
 | `/incidents/{id}` | GET | Get incident by ID |
+| `/incidents/{id}/resolve` | POST | Manually resolve an incident (it will not flap-reopen) |
 
 ## Releasing
 
