@@ -225,6 +225,25 @@ class TestIncidentApi:
         assert resp.status_code == 200
         assert resp.json()["incident_id"] == "abc12345"
 
+    async def test_resolve_incident(self, client, app_state):
+        _seed_incident(app_state["store"])
+        resp = await client.post("/incidents/abc12345/resolve")
+        assert resp.json() == {"status": "resolved", "incident_id": "abc12345"}
+        assert app_state["store"].get("abc12345")["status"] == "resolved"
+
+    async def test_resolve_incident_404(self, client, app_state):
+        resp = await client.post("/incidents/nope/resolve")
+        assert resp.status_code == 404
+
+    async def test_resolve_incident_already_resolved(self, client, app_state):
+        _seed_incident(app_state["store"])
+        await client.post("/incidents/abc12345/resolve")
+        resp = await client.post("/incidents/abc12345/resolve")
+        assert resp.json() == {
+            "status": "already_resolved",
+            "incident_id": "abc12345",
+        }
+
     async def test_list_incidents_limit_bounds(self, client, app_state):
         _seed_incident(app_state["store"])
         assert (await client.get("/incidents")).json()[0]["incident_id"] == "abc12345"

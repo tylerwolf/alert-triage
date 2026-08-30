@@ -162,6 +162,36 @@ class TestUpdatesAndLifecycle:
         assert updated["status"] == "resolved"
         assert updated["resolved_at"] is not None
 
+    def test_resolve_closes_incident_and_all_alerts(self, store):
+        alerts = [make_alert(fingerprint="fp1"), make_alert(fingerprint="fp2")]
+        _save(store, "abc12345", alerts)
+        updated = store.resolve("abc12345")
+        assert updated["status"] == "resolved"
+        assert updated["resolved_at"] is not None
+        assert updated["manually_resolved"] is True
+        assert all(
+            v["status"] == "resolved" for v in updated["alert_fingerprints"].values()
+        )
+        assert updated["updates"][-1]["type"] == "manual_resolved"
+
+    def test_resolve_missing_id_returns_none(self, store):
+        assert store.resolve("nope") is None
+
+    def test_resolve_already_resolved_is_noop(self, store):
+        _save(store, "abc12345")
+        store.mark_alerts_resolved("abc12345", {"fp-test"})
+        updated = store.resolve("abc12345")
+        assert updated["status"] == "resolved"
+        assert "manually_resolved" not in updated
+        assert not any(
+            u["type"] == "manual_resolved" for u in updated.get("updates", [])
+        )
+
+    def test_manually_resolved_incident_not_reopen_candidate(self, store):
+        _save(store, "abc12345")
+        store.resolve("abc12345")
+        assert store.find_by_fingerprints({"fp-test"}, 86400, 1800) is None
+
     def test_add_alerts_merges_new_fingerprints(self, store):
         _save(store, "abc12345")
         store.add_alerts("abc12345", [make_alert("Extra", fingerprint="fp-new")])

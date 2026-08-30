@@ -343,3 +343,15 @@ async def list_incidents(
     limit: int = Query(default=20, ge=1, le=100),
 ) -> JSONResponse:
     return JSONResponse(incident_store.list_recent(limit))
+
+
+@app.post("/incidents/{incident_id}/resolve")
+async def resolve_incident(incident_id: str) -> JSONResponse:
+    data = incident_store.get(incident_id)
+    if data is None:
+        return JSONResponse({"error": "Incident not found"}, status_code=404)
+    if data.get("status") == "resolved":
+        return JSONResponse({"status": "already_resolved", "incident_id": incident_id})
+    incident_store.resolve(incident_id)
+    log.info("Incident %s manually resolved via API", incident_id)
+    return JSONResponse({"status": "resolved", "incident_id": incident_id})

@@ -140,8 +140,8 @@ class IncidentStore:
                 if fingerprints & set(data.get("alert_fingerprints", {})):
                     return data
             else:  # resolved — only a match if within the reopen window
-                if data.get("auto_resolved"):
-                    continue  # TTL-expired incidents are not reopen candidates
+                if data.get("auto_resolved") or data.get("manually_resolved"):
+                    continue  # TTL-expired/human-closed incidents don't reopen
                 resolved_at = _parse_ts(data.get("resolved_at"))
                 if (
                     resolved_at is not None
@@ -186,6 +186,34 @@ class IncidentStore:
         if all(v.get("status") == "resolved" for v in fps.values()):
             data["status"] = "resolved"
             data["resolved_at"] = now
+        data["last_update_at"] = now
+        self._write(incident_id, data)
+        return data
+
+    def resolve(self, incident_id: str) -> dict | None:
+        """Manually resolve an incident regardless of remaining firing alerts.
+
+        Returns the updated incident data, or None if the incident doesn't exist.
+        Already-resolved incidents are returned unchanged.
+        """
+        data = self.get(incident_id)
+        if data is None:
+            return None
+        if data.get("status") == "resolved":
+            return data
+        now = _now().isoformat()
+        for v in data.setdefault("alert_fingerprints", {}).values():
+            v["status"] = "resolved"
+        data["status"] = "resolved"
+        data["resolved_at"] = now
+        data["manually_resolved"] = True
+        data.setdefault("updates", []).append(
+            {
+                "timestamp": now,
+                "type": "manual_resolved",
+                "message": "Manually resolved via API",
+            }
+        )
         data["last_update_at"] = now
         self._write(incident_id, data)
         return data
