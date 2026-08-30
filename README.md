@@ -139,6 +139,13 @@ Alertmanager ──webhook──▶ Coalesce (45s) ──▶ Correlate ──▶
 | `/incidents` | GET | List recent incidents (query: `?limit=20`) |
 | `/incidents/{id}` | GET | Get incident by ID |
 
+## Releasing
+
+1. Bump `version` in `pyproject.toml` and `__version__` in `alert_triage/__init__.py` (a test enforces they match) in a `Bump version to X.Y.Z` commit
+2. Tag it `vX.Y.Z` and push the branch and tag
+
+The tag push triggers the Release workflow, which publishes the multi-arch Docker image to GHCR (`:X.Y.Z` and `:latest`) and creates a GitHub Release with generated notes. No manual release steps.
+
 ---
 
 ## License
