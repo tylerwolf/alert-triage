@@ -10,6 +10,7 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
 from .config import Settings, build_system_prompt
+from .filtering import split_excluded
 from .incidents import IncidentStore, alert_fingerprint
 from .investigation import check_status_change, investigate
 from .notifications import DiscordNotifier, NullNotifier
@@ -38,6 +39,22 @@ _coalesce_lock = asyncio.Lock()
 def _alertname(alerts: list[dict]) -> str:
     names = sorted({a.get("labels", {}).get("alertname", "unknown") for a in alerts})
     return "+".join(names) if names else "unknown"
+
+
+def _reconcilable_alerts(alerts: list[dict]) -> list[dict]:
+    active = [
+        a
+        for a in alerts
+        if a.get("status", {}).get("state") == "active"
+        and not a.get("status", {}).get("silencedBy")
+    ]
+    kept, dropped = split_excluded(active, settings.excluded_alert_names)
+    if dropped:
+        log.info(
+            "Startup reconciliation: excluding %s",
+            ", ".join(sorted({_alertname([a]) for a in dropped})),
+        )
+    return kept
 
 
 def _format_duration(seconds: float) -> str:
@@ -193,15 +210,10 @@ async def startup_reconcile() -> None:
             log.warning("Startup reconciliation failed to reach Alertmanager: %s", e)
             return
 
-        active = [
-            a
-            for a in alerts
-            if a.get("status", {}).get("state") == "active"
-            and not a.get("status", {}).get("silencedBy")
-        ]
+        active = _reconcilable_alerts(alerts)
 
         if not active:
-            log.info("Startup reconciliation: no active non-silenced alerts")
+            log.info("Startup reconciliation: no reconcilable alerts")
             return
 
         # Correlate against existing open incidents so a restart mid-outage
@@ -246,6 +258,14 @@ async def webhook(request: Request) -> JSONResponse:
     incoming_alerts = payload.get("alerts", [])
     if not incoming_alerts:
         return JSONResponse({"status": "ignored", "reason": "no alerts"})
+
+    incoming_alerts, dropped = split_excluded(
+        incoming_alerts, settings.excluded_alert_names
+    )
+    if dropped:
+        log.info("Webhook: excluding %s", _alertname(dropped))
+    if not incoming_alerts:
+        return JSONResponse({"status": "ignored", "reason": "all alerts excluded"})
 
     status = payload.get("status")
     if status == "resolved":

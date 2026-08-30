@@ -41,6 +41,16 @@ def test_build_system_prompt_missing_file_uses_base(tmp_path):
     assert build_system_prompt(settings) == BASE_SYSTEM_PROMPT
 
 
+def test_excluded_alerts_default_is_empty(monkeypatch):
+    monkeypatch.delenv("ALERT_TRIAGE_EXCLUDED_ALERTS", raising=False)
+    assert Settings().excluded_alert_names == frozenset()
+
+
+def test_excluded_alerts_parses_csv_env(monkeypatch):
+    monkeypatch.setenv("ALERT_TRIAGE_EXCLUDED_ALERTS", "Watchdog, InfoOnly,,")
+    assert Settings().excluded_alert_names == frozenset({"Watchdog", "InfoOnly"})
+
+
 def test_version_matches_pyproject():
     pyproject = Path(__file__).resolve().parents[1] / "pyproject.toml"
     version = tomllib.loads(pyproject.read_text())["project"]["version"]

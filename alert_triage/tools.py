@@ -181,10 +181,15 @@ async def execute_tool(
                 annotations = a.get("annotations", {})
                 status = a.get("status", {}).get("state", "unknown")
                 starts_at = a.get("startsAt", "unknown")
+                excluded_note = (
+                    " [excluded from triage]"
+                    if labels.get("alertname") in settings.excluded_alert_names
+                    else ""
+                )
                 lines.append(
                     f"[{status}] {labels.get('alertname', '?')} — "
                     f"{annotations.get('summary', 'no summary')} "
-                    f"(since {starts_at})"
+                    f"(since {starts_at}){excluded_note}"
                 )
             return "\n".join(lines)
 

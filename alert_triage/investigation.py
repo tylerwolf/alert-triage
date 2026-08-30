@@ -21,10 +21,11 @@ async def check_status_change(incident: dict, settings: Settings) -> str | None:
     incident's alert set. Returns None if nothing changed, otherwise a short
     human-readable delta summary.
     """
+    excluded = settings.excluded_alert_names
     incident_alerts = {
         (v.get("alertname", ""), v.get("instance", ""))
         for v in incident.get("alert_fingerprints", {}).values()
-        if v.get("status") == "firing"
+        if v.get("status") == "firing" and v.get("alertname", "") not in excluded
     }
 
     try:
@@ -46,6 +47,7 @@ async def check_status_change(incident: dict, settings: Settings) -> str | None:
             r.get("metric", {}).get("instance", ""),
         )
         for r in results
+        if r.get("metric", {}).get("alertname", "") not in excluded
     }
 
     new_alerts = currently_firing - incident_alerts

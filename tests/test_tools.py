@@ -164,6 +164,21 @@ class TestGetAlertDetails:
         result = await execute_tool("get_alert_details", {}, http, settings)
         assert result == "No active alerts in Alertmanager."
 
+    @respx.mock
+    async def test_excluded_alert_annotated(self, http, settings):
+        respx.get("http://alertmanager:9093/api/v2/alerts").respond(
+            json=[
+                {
+                    "labels": {"alertname": "Watchdog"},
+                    "annotations": {"summary": "always firing"},
+                    "status": {"state": "active"},
+                    "startsAt": "2026-08-19T00:00:00Z",
+                }
+            ]
+        )
+        result = await execute_tool("get_alert_details", {}, http, settings)
+        assert result.endswith("[excluded from triage]")
+
 
 class TestErrorHandling:
     async def test_unknown_tool(self, http, settings):

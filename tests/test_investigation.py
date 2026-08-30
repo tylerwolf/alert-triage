@@ -328,6 +328,21 @@ class TestCheckStatusChange:
         assert "Alerts cleared: DNSDown (host:53)" in delta
 
     @respx.mock
+    async def test_excluded_alert_not_reported_as_new(self, settings):
+        respx.get("http://prometheus:9090/api/v1/query").respond(
+            json=self._prom_result(
+                [
+                    {"metric": {"alertname": "DNSDown", "instance": "host:53"}},
+                    {"metric": {"alertname": "Watchdog", "instance": ""}},
+                    {"metric": {"alertname": "HighCPU", "instance": "host:9100"}},
+                ]
+            )
+        )
+        delta = await check_status_change(self._incident(), settings)
+        assert "HighCPU" in delta
+        assert "Watchdog" not in delta
+
+    @respx.mock
     async def test_prometheus_unreachable_returns_none(self, settings):
         respx.get("http://prometheus:9090/api/v1/query").mock(
             side_effect=httpx.ConnectError("boom")

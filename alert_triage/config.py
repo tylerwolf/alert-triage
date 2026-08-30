@@ -47,6 +47,15 @@ class Settings(BaseSettings):
     startup_reconcile: bool = True
     reconcile_delay: int = 30  # seconds
 
+    # Alert exclusion: comma-separated alertnames never investigated (exact match)
+    excluded_alerts: str = ""
+
+    @property
+    def excluded_alert_names(self) -> frozenset[str]:
+        return frozenset(
+            name.strip() for name in self.excluded_alerts.split(",") if name.strip()
+        )
+
     # Server
     port: int = 8099
 

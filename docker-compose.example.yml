@@ -1,7 +1,7 @@
 ---
 services:
   alert-triage:
-    image: ghcr.io/tylerwolf/alert-triage:0.2.1
+    image: ghcr.io/tylerwolf/alert-triage:0.2.4
     container_name: alert-triage
     restart: unless-stopped
     env_file: alert-triage.env
@@ -12,6 +12,8 @@ services:
       - ALERT_TRIAGE_ALERTMANAGER_URL=http://alertmanager:9093
       # Mount a custom system prompt describing your environment (optional)
       - ALERT_TRIAGE_SYSTEM_PROMPT_FILE=/config/system-prompt.md
+      # Alertnames to never investigate, e.g. an always-firing dead man's switch (optional)
+      # - ALERT_TRIAGE_EXCLUDED_ALERTS=Watchdog
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - alert_triage_data:/data

@@ -179,6 +179,36 @@ class TestReopenAndResolve:
         assert notifier.kinds() == ["send_resolved"]
 
 
+class TestExclusion:
+    async def test_excluded_only_payload_ignored(
+        self, client, app_state, investigate_mock
+    ):
+        resp = await client.post(
+            "/webhook",
+            json=make_payload(alerts=[make_alert("Watchdog", fingerprint="fp-wd")]),
+        )
+        assert resp.json() == {"status": "ignored", "reason": "all alerts excluded"}
+        assert app_module._coalesce is None
+        investigate_mock.assert_not_awaited()
+
+    async def test_mixed_payload_drops_excluded(
+        self, client, app_state, investigate_mock
+    ):
+        resp = await client.post(
+            "/webhook",
+            json=make_payload(
+                alerts=[
+                    make_alert("Watchdog", fingerprint="fp-wd"),
+                    make_alert("ServiceDown", fingerprint="fp-sd"),
+                ]
+            ),
+        )
+        assert resp.json() == {"status": "buffered"}
+        await app_module._coalesce["task"]
+        alerts = investigate_mock.await_args.args[0]["alerts"]
+        assert [a["labels"]["alertname"] for a in alerts] == ["ServiceDown"]
+
+
 class TestIncidentApi:
     async def test_health(self, client):
         resp = await client.get("/health")

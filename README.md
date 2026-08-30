@@ -32,7 +32,7 @@ DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
 ```yaml
 services:
   alert-triage:
-    image: ghcr.io/tylerwolf/alert-triage:0.2.3
+    image: ghcr.io/tylerwolf/alert-triage:0.2.4
     container_name: alert-triage
     restart: unless-stopped
     env_file: alert-triage.env
@@ -101,6 +101,7 @@ All configuration is via environment variables. Variables prefixed with `ALERT_T
 | `ALERT_TRIAGE_MAX_TOKENS` | `4096` | Max response tokens per Claude call |
 | `ALERT_TRIAGE_STARTUP_RECONCILE` | `true` | Check for firing alerts on startup |
 | `ALERT_TRIAGE_RECONCILE_DELAY` | `30` | Seconds to wait before startup reconciliation |
+| `ALERT_TRIAGE_EXCLUDED_ALERTS` | *(empty)* | Comma-separated alertnames never investigated (exact match, case-sensitive) — e.g. an always-firing dead-man's-switch alert |
 | `ALERT_TRIAGE_PORT` | `8099` | Server port |
 
 ## How It Works
@@ -126,6 +127,8 @@ Alertmanager ──webhook──▶ Coalesce (45s) ──▶ Correlate ──▶
    - `get_alert_details` — get current alerts from Alertmanager
 5. **Diagnosis** is posted to Discord and saved as a JSON incident file
 6. **Startup reconciliation** checks for alerts that fired while the service was down
+   (silenced alerts and `ALERT_TRIAGE_EXCLUDED_ALERTS` alertnames are skipped — exclusions
+   apply everywhere: webhook intake, reconciliation, and status-change sweeps)
 
 ## API
 

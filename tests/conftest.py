@@ -14,6 +14,7 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-not-real")
 os.environ["ALERT_TRIAGE_INCIDENTS_DIR"] = _session_dir
 os.environ["ALERT_TRIAGE_STARTUP_RECONCILE"] = "false"
 os.environ["ALERT_TRIAGE_COALESCE_WINDOW"] = "0"
+os.environ["ALERT_TRIAGE_EXCLUDED_ALERTS"] = "Watchdog"
 os.environ.pop("DISCORD_WEBHOOK_URL", None)  # force NullNotifier at import
 
 import httpx
