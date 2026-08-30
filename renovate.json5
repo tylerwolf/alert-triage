@@ -1,0 +1,35 @@
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: [
+    'config:recommended',
+  ],
+  schedule: [
+    'before 12pm on Saturday',
+  ],
+  timezone: 'America/Denver',
+  labels: [
+    'dependencies',
+    'renovate',
+  ],
+  enabledManagers: [
+    'github-actions',
+    'dockerfile',
+    'pep621',
+  ],
+  packageRules: [
+    {
+      // Let fresh base-image releases bake before PRing them, guarding
+      // against day-zero broken images (pulled/re-tagged releases).
+      matchDatasources: [
+        'docker',
+      ],
+      minimumReleaseAge: '3 days',
+    },
+    {
+      matchUpdateTypes: [
+        'major',
+      ],
+      automerge: false,
+    },
+  ],
+}
